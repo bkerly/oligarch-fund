@@ -24,7 +24,7 @@ except FileNotFoundError:
 
 # 3. Calculate Top Level Metrics Dynamically
 # Filter for 2026 data to get the current total value
-current_value = df_history[df_history['Year'] == '2026']['Value (USD)'].sum()
+current_value = df_history[df_history['Year'] == '2026']['Value_USD'].sum()
 
 st.subheader("Investor Performance Summary")
 col1, col2, col3 = st.columns(3)
