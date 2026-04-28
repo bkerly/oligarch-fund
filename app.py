@@ -1,7 +1,6 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
-import os
 
 # 1. Page Configuration
 st.set_page_config(page_title="The Oligarch Fund", layout="wide")
@@ -80,26 +79,13 @@ fig_main = px.bar(
     color_discrete_sequence=['#A6B1E1', '#424874', '#DCD6F7'],
     title="Growth of Allocated Funds (2024 - 2026)"
 )
-fig_main.update_layout(xaxis_title="", yaxis_title="Value (USD)")
+# Ensure X-axis labels are shown clearly now that the cartoons are gone
+fig_main.update_layout(xaxis_title="Oligarch", yaxis_title="Value (USD)")
 st.plotly_chart(fig_main, use_container_width=True)
-
-# 5. Little Cartoons Array (Directly under the chart)
-cartoon_cols = st.columns(10)
-for i, oligarch in enumerate(oligarchs):
-    with cartoon_cols[i]:
-        # Formats the name to look for a local file (e.g., 'elon_musk.png')
-        filename = oligarch.lower().replace(" ", "_") + ".png"
-        
-        if os.path.exists(filename):
-            st.image(filename, use_container_width=True)
-            st.markdown(f"<div style='text-align: center;'><small>{oligarch.split()[0]}</small></div>", unsafe_allow_html=True)
-        else:
-            # Fallback icon if the image file isn't in your folder yet
-            st.markdown(f"<div style='text-align: center; font-size: 2rem;'>👤</div><div style='text-align: center;'><small>{oligarch.split()[0]}</small></div>", unsafe_allow_html=True)
 
 st.divider()
 
-# 6. Drill-Down Interactive Filter
+# 5. Drill-Down Interactive Filter
 st.subheader("Holdings Drill-Down")
 selected_oligarch = st.selectbox("Select to view portfolio:", options=oligarchs)
 
