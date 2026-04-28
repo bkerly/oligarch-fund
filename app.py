@@ -1,41 +1,75 @@
 import streamlit as st
 import pandas as pd
 import plotly.express as px
+import os
 
 # 1. Page Configuration
 st.set_page_config(page_title="The Oligarch Fund", layout="wide")
 st.title("The Oligarch Fund 🏛️")
 st.markdown("Mirroring the portfolios of America's 10 wealthiest individuals.")
 
+# --- SIDEBAR: Investor Options ---
+st.sidebar.header("Investor Options")
+init_inv = st.sidebar.number_input("Initial Investment ($)", min_value=0, value=50000, step=5000)
+monthly_cont = st.sidebar.number_input("Monthly Contribution ($)", min_value=0, value=2000, step=500)
+weighting = st.sidebar.radio("Fund Weighting", ["Even Distribution (10% each)", "Net Worth Weighted"])
+
 # 2. Load External Data
 @st.cache_data
 def load_data():
-    history_df = pd.read_csv("fund_history.csv")
-    holdings_df = pd.read_csv("current_holdings.csv")
-    # Ensure Year is treated as a categorical string for charting
-    history_df['Year'] = history_df['Year'].astype(str)
-    return history_df, holdings_df
+    return pd.read_csv("oligarch_data.csv")
 
 try:
-    df_history, df_holdings = load_data()
+    df_data = load_data()
 except FileNotFoundError:
-    st.error("Data files not found. Please ensure 'fund_history.csv' and 'current_holdings.csv' are in the same directory.")
+    st.error("Please ensure 'oligarch_data.csv' is in the same directory.")
     st.stop()
 
-# 3. Calculate Top Level Metrics Dynamically
-# Filter for 2026 data to get the current total value
-current_value = df_history[df_history['Year'] == '2026']['Value_USD'].sum()
+# 3. Dynamic Fund Calculation
+# Timeframe variables: 2024 to April 2026
+months_invested = {'2024': 12, '2025': 24, '2026': 28}
+oligarchs = df_data['Oligarch'].unique()
+total_net_worth = df_data.groupby('Oligarch')['NetWorth_B'].first().sum()
 
+history_records = []
+current_allocations = {}
+
+for year, m in months_invested.items():
+    principal = init_inv + (monthly_cont * m)
+    
+    for oligarch in oligarchs:
+        # Determine slice based on the sidebar weighting option
+        if weighting == "Net Worth Weighted":
+            nw = df_data[df_data['Oligarch'] == oligarch]['NetWorth_B'].iloc[0]
+            weight = nw / total_net_worth
+        else:
+            weight = 1.0 / len(oligarchs)
+            
+        allocated_principal = principal * weight
+        
+        # Simulate active growth to reflect historical returns
+        growth_multiplier = {'2024': 1.08, '2025': 1.15, '2026': 1.21}[year]
+        value = allocated_principal * growth_multiplier
+        
+        history_records.append({'Year': year, 'Oligarch': oligarch, 'Value_USD': value})
+        
+        # Store the current 2026 total value for the drill-down section
+        if year == '2026':
+            current_allocations[oligarch] = value
+
+df_history = pd.DataFrame(history_records)
+current_total_value = df_history[df_history['Year'] == '2026']['Value_USD'].sum()
+
+# Top Level Metrics
 st.subheader("Investor Performance Summary")
 col1, col2, col3 = st.columns(3)
-col1.metric("Initial Investment (2024)", "$50,000")
-col2.metric("Monthly Contribution", "$2,000")
-# Format the dynamic sum to currency
-col3.metric("Current Value (April 2026)", f"${current_value:,.0f}", "+21.4% Time-Weighted Return")
+col1.metric("Total Principal Invested", f"${(init_inv + (monthly_cont * 28)):,.0f}")
+col2.metric("Weighting Strategy", weighting.split()[0])
+col3.metric("Current Value (April 2026)", f"${current_total_value:,.0f}", "+21.0% Simulated Return")
 
 st.divider()
 
-# 4. Main Chart (Recreating the Doodle for 10 people)
+# 4. Main Chart
 st.subheader("Fund Value by Oligarch Tracker")
 fig_main = px.bar(
     df_history, 
@@ -49,29 +83,42 @@ fig_main = px.bar(
 fig_main.update_layout(xaxis_title="", yaxis_title="Value (USD)")
 st.plotly_chart(fig_main, use_container_width=True)
 
+# 5. Little Cartoons Array (Directly under the chart)
+cartoon_cols = st.columns(10)
+for i, oligarch in enumerate(oligarchs):
+    with cartoon_cols[i]:
+        # Formats the name to look for a local file (e.g., 'elon_musk.png')
+        filename = oligarch.lower().replace(" ", "_") + ".png"
+        
+        if os.path.exists(filename):
+            st.image(filename, use_container_width=True)
+            st.markdown(f"<div style='text-align: center;'><small>{oligarch.split()[0]}</small></div>", unsafe_allow_html=True)
+        else:
+            # Fallback icon if the image file isn't in your folder yet
+            st.markdown(f"<div style='text-align: center; font-size: 2rem;'>👤</div><div style='text-align: center;'><small>{oligarch.split()[0]}</small></div>", unsafe_allow_html=True)
+
 st.divider()
 
-# 5. Drill-Down Interactive Filter
+# 6. Drill-Down Interactive Filter
 st.subheader("Holdings Drill-Down")
-st.markdown("Select an oligarch below to inspect the specific asset distribution and YoY performance of their slice of the fund.")
+selected_oligarch = st.selectbox("Select to view portfolio:", options=oligarchs)
 
-# Extract unique oligarchs for the selector
-oligarch_list = df_holdings['Oligarch'].unique().tolist()
-selected_oligarch = st.selectbox("Select to view portfolio:", options=oligarch_list)
-
-# 6. Render Specific Holdings
 if selected_oligarch:
     st.write(f"### Proportional Holdings: {selected_oligarch}")
     
-    # Filter the holdings dataframe for the selected individual
-    df_selected = df_holdings[df_holdings['Oligarch'] == selected_oligarch].copy()
+    # Isolate the specific oligarch and grab their 2026 allocated dollar total
+    df_selected = df_data[df_data['Oligarch'] == selected_oligarch].copy()
+    allocated_dollars = current_allocations[selected_oligarch]
+    
+    # Multiply their percentage split by the total dollars to get exact amounts
+    df_selected['Calculated_Value'] = df_selected['Asset_Pct'] * allocated_dollars
     
     colA, colB = st.columns([2, 1])
     
     with colA:
         fig_pie = px.pie(
             df_selected, 
-            values='Value_USD', 
+            values='Calculated_Value', 
             names='Asset', 
             hole=0.4,
             color_discrete_sequence=px.colors.qualitative.Pastel
@@ -79,9 +126,8 @@ if selected_oligarch:
         st.plotly_chart(fig_pie, use_container_width=True)
         
     with colB:
-        # Display the dataframe with formatted currency, keeping the YoY growth string
         st.dataframe(
-            df_selected[['Asset', 'Value_USD', 'YoY_Growth']].style.format({'Value_USD': '${:,.0f}'}),
+            df_selected[['Asset', 'Calculated_Value', 'YoY_Growth']].style.format({'Calculated_Value': '${:,.0f}'}),
             hide_index=True,
             use_container_width=True
         )
